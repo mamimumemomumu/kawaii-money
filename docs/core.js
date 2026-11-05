@@ -210,6 +210,11 @@ function parseGrabEmail(subject, body) {
           merchant: merchant, date: date, bookingId: bookingId, why: why.join(', ')};
 }
 
+/** True for a real Grab receipt. Account, promo and verification emails from Grab are skipped quietly. */
+function isGrabReceipt(subject, body) {
+  return /E-?Receipt|Tax Invoice|ใบเสร็จ|ใบกำกับภาษี|Total Paid|ยอดชำระ/i.test(String(subject || '') + '\n' + String(body || ''));
+}
+
 /** Validate a split: lines must add up to the transaction amount. */
 function checkSplits(txAmount, splits) {
   var sum = 0;

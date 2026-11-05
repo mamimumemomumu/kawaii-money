@@ -69,4 +69,7 @@ eq('food (guessed layout)', [food.ok, food.service, food.amount, food.last4, foo
 const bad = B.parseGrabEmail('Hello from Grab', 'Promo of the week');
 eq('unreadable → inbox', bad.ok, false);
 
+eq('verification email is not a receipt', B.isGrabReceipt('Grab: Verify Your Grab Account', 'Verify Your Email Address. To make your Grab account more secure and to receive important messages and transaction history from Grab'), false);
+eq('ride receipt is a receipt', B.isGrabReceipt('Your Grab E-Receipt', ''), true);
+
 if (fails) { console.log(fails + ' failed'); process.exit(1); } else console.log('backend tests passed');

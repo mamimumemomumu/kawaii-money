@@ -237,6 +237,11 @@ function parseGrabEmail(subject, body) {
           merchant: merchant, date: date, bookingId: bookingId, why: why.join(', ')};
 }
 
+/** True for a real Grab receipt. Account, promo and verification emails from Grab are skipped quietly. */
+function isGrabReceipt(subject, body) {
+  return /E-?Receipt|Tax Invoice|ใบเสร็จ|ใบกำกับภาษี|Total Paid|ยอดชำระ/i.test(String(subject || '') + '\n' + String(body || ''));
+}
+
 /** Validate a split: lines must add up to the transaction amount. */
 function checkSplits(txAmount, splits) {
   var sum = 0;
@@ -665,6 +670,7 @@ function fetchGrabEmails() {
       if (seen[ref]) return;
       var plain = msg.getPlainBody();
       var body = plain && plain.trim() ? plain : htmlToText(msg.getBody());
+      if (!isGrabReceipt(msg.getSubject(), body)) { seen[ref] = true; return; }
       var p = parseGrabEmail(msg.getSubject(), body);
       if (p.bookingId) { if (seen['grab:' + p.bookingId]) { seen[ref] = true; return; } ref = 'grab:' + p.bookingId; }
       var date = p.date || Utilities.formatDate(msg.getDate(), 'Asia/Bangkok', 'yyyy-MM-dd');
@@ -674,7 +680,7 @@ function fetchGrabEmails() {
           merchant: p.merchant, note: 'Grab ' + (p.product || p.service), category: p.category, owner: 'me', settled: false, status: 'ok',
           source: 'grab_email', tags: '', ref: ref, created_at: now, updated_at: now});
       } else {
-        inbox.push({id: newId_(), received_at: now, source: 'grab_email', subject: msg.getSubject(),
+        inbox.push({id: newId_(), received_at: Utilities.formatDate(msg.getDate(), 'Asia/Bangkok', "yyyy-MM-dd'T'HH:mm:ss"), source: 'grab_email', subject: msg.getSubject(),
           raw: body.slice(0, 4000), status: 'open', note: p.why});
       }
       seen[ref] = true;
@@ -706,4 +712,4 @@ function runRecurring() {
 
 // For Node tests (ignored by Apps Script).
 if (typeof module !== 'undefined') module.exports = {cleanMerchant: cleanMerchant, applyRules: applyRules, matchStatement: matchStatement,
-  txFromRow: txFromRow, parseGrabEmail: parseGrabEmail, htmlToText: htmlToText, checkSplits: checkSplits, daysBetween: daysBetween, SEED_RULES: SEED_RULES, SEED_CATEGORIES: SEED_CATEGORIES};
+  txFromRow: txFromRow, parseGrabEmail: parseGrabEmail, isGrabReceipt: isGrabReceipt, htmlToText: htmlToText, checkSplits: checkSplits, daysBetween: daysBetween, SEED_RULES: SEED_RULES, SEED_CATEGORIES: SEED_CATEGORIES};
