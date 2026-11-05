@@ -1,5 +1,5 @@
 // Keeps the app shell available offline. Data always comes from your Google Sheet (never cached here).
-const CACHE = 'km-v1';
+const CACHE = 'km-v2';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'parsers.js', 'demo.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-512.png'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())));

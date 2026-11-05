@@ -311,14 +311,49 @@
   function openSheet(title, body) {
     closeSheet(true);
     const bd = h('div', {class: 'backdrop', onclick: () => closeSheet()});
-    const sh = h('div', {class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title}, h('div', {class: 'grab'}), title ? h('h3', null, title) : null, body);
+    const head = h('div', {class: 'sheet-head'}, h('div', {class: 'grab'}),
+      h('button', {type: 'button', class: 'sheet-x', 'aria-label': t('close'), onclick: () => closeSheet()}, '✕'),
+      title ? h('h3', null, title) : null);
+    const sh = h('div', {class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title || ''}, head, body);
     document.body.append(bd, sh);
+    document.documentElement.classList.add('sheet-open');
     requestAnimationFrame(() => { bd.classList.add('show'); sh.classList.add('show'); });
     sheetStack = [bd, sh];
+    swipeToClose(sh, bd);
     return sh;
+  }
+  /** Drag the sheet down to close it: from its top bar any time, or from anywhere when its content is scrolled to the top. */
+  function swipeToClose(sh, bd) {
+    let y0 = null, dy = 0, fromHead = false, active = false;
+    sh.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      fromHead = !!e.target.closest('.sheet-head');
+      if (!fromHead && (sh.scrollTop > 0 || e.target.closest('input, select, textarea'))) { y0 = null; return; }
+      y0 = e.touches[0].clientY; dy = 0; active = false;
+    }, {passive: true});
+    sh.addEventListener('touchmove', (e) => {
+      if (y0 == null) return;
+      dy = e.touches[0].clientY - y0;
+      if (!active && dy > 6 && (fromHead || sh.scrollTop <= 0)) { active = true; sh.classList.add('dragging'); }
+      if (!active) return;
+      if (e.cancelable) e.preventDefault();
+      sh.style.transform = `translate(-50%, ${Math.max(0, dy)}px)`;
+      bd.style.opacity = String(Math.max(0, 1 - dy / 400));
+    }, {passive: false});
+    const end = () => {
+      if (y0 == null) return;
+      y0 = null;
+      if (!active) return;
+      active = false; sh.classList.remove('dragging');
+      sh.style.transform = ''; bd.style.opacity = '';
+      if (dy > 90) closeSheet();
+    };
+    sh.addEventListener('touchend', end);
+    sh.addEventListener('touchcancel', end);
   }
   function closeSheet(instant) {
     const [bd, sh] = sheetStack; sheetStack = [];
+    document.documentElement.classList.remove('sheet-open');
     if (!sh) return;
     if (instant) { bd.remove(); sh.remove(); return; }
     bd.classList.remove('show'); sh.classList.remove('show');
@@ -524,7 +559,7 @@
       const grid = h('div', {class: 'catgrid'}, visibleCats(kind).map((c) => h('button', {type: 'button', class: 'catbtn' + (x.category === c.id ? ' on' : ''), onclick: () => { x.category = x.category === c.id ? '' : c.id; draw(); }}, h('b', null, c.emoji), EN() && c.name_en ? c.name_en : c.name_th)));
       const date = h('input', {class: 'input', type: 'date', value: x.date, onchange: (e) => { x.date = e.target.value; }});
       const note = h('input', {class: 'input', value: x.note || '', placeholder: t('note'), oninput: (e) => { x.note = e.target.value; }});
-      body.replaceChildren(seg, field(t('amount'), amount), x.type !== 'cash_withdraw' ? field(t('category'), grid) : null,
+      body.replaceChildren(...[seg, field(t('amount'), amount), x.type !== 'cash_withdraw' ? field(t('category'), grid) : null,
         x.category === 'seven' ? h('div', {class: 'chips'}, h('button', {type: 'button', class: 'chip' + (x.owner === 'me' ? ' on' : ''), onclick: () => { x.owner = 'me'; draw(); }}, t('mine')), h('button', {type: 'button', class: 'chip' + (x.owner === 'partner' ? ' on' : ''), onclick: () => { x.owner = 'partner'; draw(); }}, t('partner'))) : null,
         x.type !== 'cash_withdraw' ? field(t('payWith'), payChips) : null, field(t('merchant'), merchant), field(t('date'), date), field(t('note'), note),
         h('button', {type: 'button', class: 'btn primary block', onclick: async () => {
@@ -536,7 +571,7 @@
           const key = C.cleanMerchant(tx.merchant);
           if (tx.pay === 'transfer' && key && tx.category && C.applyRules(D().rules, tx.merchant).category !== tx.category) await api('saveRule', {rule: {pattern: key, category: tx.category, channel: '', priority: 50}});
           closeSheet(); toast(t('saved'));
-        }}, t('save')));
+        }}, t('save'))].filter(Boolean));
     }
     draw();
     openSheet(existing ? t('edit') : '🌸 ' + t('add'), body);
