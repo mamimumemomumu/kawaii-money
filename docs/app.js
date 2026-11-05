@@ -189,12 +189,31 @@
       const r = await fetch(S.cfg.api + (S.cfg.api.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(S.cfg.token));
       const j = await r.json();
       if (!j.ok) throw new Error(j.error);
-      setData(j.data); render();
+      setData(j.data); render(); lastLoad = Date.now();
     } catch (e) {
       toast('⚠️ ' + (e.message || e));
       if (!cached) { S.data = null; render(); }
     } finally { busy(false); }
   }
+
+  // Coming back to the app (switching from Gmail, Grab, etc.) quietly fetches the latest data.
+  let lastLoad = Date.now(), refreshing = false;
+  async function refresh() {
+    if (S.cfg.demo || !S.cfg.api || !S.data || refreshing || loadingEl || Date.now() - lastLoad < 20000) return;
+    refreshing = true;
+    try {
+      const r = await fetch(S.cfg.api + (S.cfg.api.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(S.cfg.token));
+      const j = await r.json();
+      if (j.ok && JSON.stringify(j.data) !== JSON.stringify(S.data)) {
+        const typing = document.activeElement && document.activeElement.matches('input, select, textarea');
+        setData(j.data);
+        if (!typing) render();
+      }
+      lastLoad = Date.now();
+    } catch (e) { /* offline: keep what is on screen */ } finally { refreshing = false; }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) refresh(); });
 
   async function api(action, payload) {
     if (S.cfg.demo) { const r = demoAction(action, payload || {}); render(); return r; }
