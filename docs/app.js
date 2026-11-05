@@ -761,7 +761,15 @@
     openSheet('💳 ' + (c.name || t('cardName')), h('div', null, field(t('cardName'), inp('name')), field(t('last4'), inp('last4', {inputmode: 'numeric', maxlength: 4})),
       field(t('cutDay'), inp('cut_day', {inputmode: 'numeric'})), field(t('dueDay'), inp('due_day', {inputmode: 'numeric'})), field(t('creditLine'), inp('credit_line', {inputmode: 'numeric'})),
       field(t('defaultFor'), inp('default_for')), field(t('color'), inp('color', {type: 'color'})),
-      h('button', {type: 'button', class: 'btn primary block', onclick: async () => { await api('saveCard', {card: Object.assign({}, f, {cut_day: Number(f.cut_day) || '', due_day: Number(f.due_day) || '', credit_line: Number(f.credit_line) || ''})}); closeSheet(); toast(t('saved')); }}, t('save'))));
+      h('button', {type: 'button', class: 'btn primary block', onclick: async () => {
+        await api('saveCard', {card: Object.assign({}, f, {cut_day: Number(f.cut_day) || '', due_day: Number(f.due_day) || '', credit_line: Number(f.credit_line) || ''})});
+        closeSheet();
+        // Grab receipts that arrived before this card had its digits: give them this card if it is the one used for Grab.
+        const chans = String(f.default_for || '').split(',').map((x) => x.trim()).filter(Boolean);
+        const fix = f.last4 && c.id ? D().transactions.filter((x) => !x.pay && x.source === 'grab_email' && chans.includes(x.channel)) : [];
+        for (const x of fix) await api('saveTx', {tx: Object.assign({}, x, {pay: c.id})});
+        toast(t('saved') + (fix.length ? ` · 💳 ${fix.length}` : ''));
+      }}, t('save'))));
   }
 
   function openCash() {
