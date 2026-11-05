@@ -1,0 +1,81 @@
+import asyncio, json, sys
+from playwright.async_api import async_playwright
+OUT = '/tmp/claude-0/shots/'
+async def main():
+    import os; os.makedirs(OUT, exist_ok=True)
+    async with async_playwright() as p:
+        b = await p.chromium.launch(executable_path='/usr/bin/google-chrome')
+        ctx = await b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, color_scheme=sys.argv[1] if len(sys.argv) > 1 else 'light')
+        pg = await ctx.new_page()
+        errs = []
+        pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
+        pg.on('pageerror', lambda e: errs.append('PAGEERROR ' + str(e)))
+        await pg.goto('http://localhost:8765/index.html')
+        await pg.screenshot(path=OUT + '0-setup.png')
+        await pg.click('text=ลองเล่นด้วยข้อมูลตัวอย่าง')
+        await pg.wait_for_timeout(400)
+        await pg.screenshot(path=OUT + '1-home.png')
+        await pg.screenshot(path=OUT + '1b-home-full.png', full_page=True)
+        # open a pending item from inbox and pick a category with scope
+        await pg.click('.nav button:nth-child(3)')
+        await pg.wait_for_timeout(200)
+        await pg.screenshot(path=OUT + '2-inbox.png')
+        n_before = await pg.evaluate("KMApp.state.data.transactions.filter(t=>t.type==='expense'&&!t.category&&!KMApp.state.data.splits.some(s=>s.tx_id===t.id)).length")
+        await pg.click('.card .chips .chip >> nth=0')
+        await pg.wait_for_timeout(350)
+        await pg.screenshot(path=OUT + '3-scope.png')
+        await pg.click('text=ร้านนี้ครั้งต่อไปด้วย')
+        await pg.wait_for_timeout(350)
+        n_after = await pg.evaluate("KMApp.state.data.transactions.filter(t=>t.type==='expense'&&!t.category&&!KMApp.state.data.splits.some(s=>s.tx_id===t.id)).length")
+        print('pending before/after', n_before, n_after)
+        # split
+        await pg.click('.card .chips .chip:has-text("แบ่งยอด") >> nth=0')
+        await pg.wait_for_timeout(350)
+        await pg.click('text=+ เพิ่มบรรทัด')
+        sels = await pg.query_selector_all('.sheet select')
+        await sels[0].select_option('pets'); await sels[1].select_option('kpop')
+        amts = await pg.query_selector_all('.sheet .splitline input')
+        await amts[0].fill('100')
+        await pg.click('text=ใส่ยอดที่เหลือ')
+        await pg.screenshot(path=OUT + '4-split.png')
+        await pg.click('.sheet .btn.primary')
+        await pg.wait_for_timeout(350)
+        print('splits', await pg.evaluate("KMApp.state.data.splits.length"))
+        # overview
+        await pg.click('.nav button:nth-child(2)'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT + '5-overview.png')
+        await pg.screenshot(path=OUT + '5b-overview-full.png', full_page=True)
+        await pg.click('.seg button:nth-child(2)'); await pg.wait_for_timeout(200)
+        await pg.screenshot(path=OUT + '5c-bars.png')
+        # budgets
+        await pg.click('.nav button:nth-child(4)'); await pg.wait_for_timeout(200)
+        await pg.screenshot(path=OUT + '6-budgets.png', full_page=True)
+        # more + cards
+        await pg.click('.nav button:nth-child(5)'); await pg.wait_for_timeout(200)
+        await pg.screenshot(path=OUT + '7-more.png')
+        await pg.click('text=บัตรของฉัน'); await pg.wait_for_timeout(200)
+        await pg.screenshot(path=OUT + '8-cards.png', full_page=True)
+        await pg.click('text=‹ กลับ'); await pg.click('text=หมวดหมู่'); await pg.wait_for_timeout(200)
+        await pg.screenshot(path=OUT + '9-categories.png')
+        await pg.click('text=‹ กลับ')
+        # add sheet
+        await pg.click('#fab'); await pg.wait_for_timeout(300)
+        await pg.fill('.sheet .input.big', '85')
+        await pg.click('.sheet .catbtn:has-text("7-11")'); await pg.wait_for_timeout(100)
+        await pg.click('.sheet .chip:has-text("ของแฟน")')
+        await pg.screenshot(path=OUT + '10-add.png')
+        await pg.click('.sheet .btn.primary.block'); await pg.wait_for_timeout(300)
+        print('partner open', await pg.evaluate("KMApp.state.data.transactions.filter(t=>t.owner==='partner'&&!t.settled).length"))
+        # import a real parsed statement through the demo backend
+        st = json.load(open('/tmp/claude-0/st_tmrw.json'))
+        res = await pg.evaluate("st => KMApp.api('importStatement', {statement: st})", st)
+        print('import', json.dumps(res, ensure_ascii=False))
+        # english
+        await pg.click('.nav button:nth-child(1)'); await pg.click('.pill-btn'); await pg.wait_for_timeout(200)
+        await pg.screenshot(path=OUT + '11-home-en.png')
+        # open a transaction sheet
+        await pg.click('.tx >> nth=0'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT + '12-tx.png')
+        print('errors', errs)
+        await b.close()
+asyncio.run(main())

@@ -1,0 +1,1 @@
+{"name": "kawaii-money", "private": true, "scripts": {"test": "node tests/parser.test.js && node tests/backend.test.js", "build": "node tests/build-core.js"}}
