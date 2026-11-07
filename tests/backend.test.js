@@ -72,4 +72,10 @@ eq('unreadable → inbox', bad.ok, false);
 eq('verification email is not a receipt', B.isGrabReceipt('Grab: Verify Your Grab Account', 'Verify Your Email Address. To make your Grab account more secure and to receive important messages and transaction history from Grab'), false);
 eq('ride receipt is a receipt', B.isGrabReceipt('Your Grab E-Receipt', ''), true);
 
+const th = B.parseGrabEmail('Your Grab E-Receipt', fs.readFileSync(__dirname + '/fixtures/grab-food-th.txt', 'utf8'));
+eq('real Thai GrabFood receipt', [th.ok, th.service, th.product, th.category, th.amount, th.last4, th.date, th.bookingId, th.merchant],
+   [true, 'food', 'GrabFood', 'food', 75, '1234', '2026-11-06', 'A-TESTFOOD0001', 'ร้านทดสอบ - สาขาทดสอบ']);
+eq('food items', th.items, ['ขนมจีน', 'ตำคอหมูย่าง']);
+eq('ride still reads after the Thai changes', [ride.product, ride.amount, ride.date], ['Saver Bike', 39, '2026-11-04']);
+
 if (fails) { console.log(fails + ' failed'); process.exit(1); } else console.log('backend tests passed');

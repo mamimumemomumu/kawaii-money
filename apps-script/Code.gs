@@ -189,13 +189,18 @@ function parseGrabEmail(subject, body) {
   var all = String(subject || '') + '\n' + text;
 
   var product = '';
-  for (var i = 0; i < lines.length - 1; i++) if (/E-Receipt|Tax Invoice|ใบเสร็จ/i.test(lines[i]) && !/Number|เลขที่/i.test(lines[i])) { product = lines[i + 1]; break; }
+  for (var p0 = 0; p0 < Math.min(lines.length, 30); p0++) {
+    if (lines[p0].length < 30 && /^(Grab[A-Za-z]+|.*\b(Bike|Car|Taxi|Saver|Mart|Express)\b.*)$/.test(lines[p0])) { product = lines[p0]; break; }
+  }
+  if (!product) for (var i = 0; i < lines.length - 1; i++) {
+    if (/E-Receipt|Tax Invoice|ใบเสร็จ/i.test(lines[i]) && !/Number|เลขที่|\[image/i.test(lines[i])) { product = lines[i + 1]; break; }
+  }
 
   var service = '';
   var tests = [
     ['mart', /GrabMart|Grab Mart|\bMart\b/i],
     ['express', /GrabExpress|Grab Express|\bExpress\b|ส่งของ|ส่งพัสดุ/i],
-    ['food', /GrabFood|Grab Food|enjoyed your (food|meal|order)|Order Summary|Your Order|Ordered from|Order from|Restaurant|ร้านอาหาร|สั่งอาหาร/i],
+    ['food', /GrabFood|Grab Food|enjoyed your (food|meal|order)|Order Summary|Your Order|Ordered from|Order from|Restaurant|ร้านอาหาร|สั่งอาหาร|ทานอาหารให้อร่อย|ค่าอาหาร/i],
     ['transport', /enjoyed your ride|Your Trip|Picked up on|Dropped off|\bBike\b|GrabCar|GrabTaxi|JustGrab|\bTaxi\b|\bCar\b|การเดินทาง|เดินทาง/i]
   ];
   for (var k = 0; k < tests.length; k++) {
@@ -205,11 +210,11 @@ function parseGrabEmail(subject, body) {
 
   var amount = null, m;
   m = /(?:Total Paid|Amount Paid|ยอดชำระ(?:ทั้งหมด)?|ยอดที่ชำระ)\s*\n?\s*(?:฿|THB|บาท)?\s*([\d,]+(?:\.\d{1,2})?)/i.exec(text);
-  if (!m) m = /(?:^|\n)(?:TOTAL|Total|ยอดรวม|รวมทั้งสิ้น)\s*\n?\s*(?:฿|THB)\s*([\d,]+(?:\.\d{1,2})?)/.exec(text);
+  if (!m) m = /(?:^|\n)[ \t]*(?:TOTAL|Total|ยอดรวม|รวมทั้งสิ้น|รวม)[ \t]*\n?[ \t]*(?:฿|THB)\s*([\d,]+(?:\.\d{1,2})?)/.exec(text);
   if (m) amount = Number(m[1].replace(/,/g, ''));
 
   var last4 = '';
-  m = /(?:Paid by|ชำระโดย|ชำระด้วย)\s*\n?[^\n\d]*?(\d{4})\b/i.exec(text) || /(?:•{2,}|\*{2,}|[xX]{4}|ending in|ลงท้ายด้วย)\s*(\d{4})\b/.exec(text);
+  m = /(?:Paid by|Payment method|ชำระโดย|ชำระด้วย|รูปแบบการชำระเงิน)\s*[:：]?\s*\n?[^\n\d]*?(\d{4})\b/i.exec(text) || /(?:•{2,}|\*{2,}|[xX]{4}|ending in|ลงท้ายด้วย)\s*(\d{4})\b/.exec(text);
   if (m) last4 = m[1];
 
   var bm = /(?:Booking ID|รหัสการจอง)\s*[:：]?\s*([A-Z0-9-]{6,})/i.exec(text);
@@ -218,12 +223,25 @@ function parseGrabEmail(subject, body) {
   var date = '';
   var dm = /(?:Picked up on|Ordered on|Delivered on|Booked on)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i.exec(text);
   if (dm && EN_MONTHS[dm[2].toUpperCase()]) date = dm[3] + '-' + String(EN_MONTHS[dm[2].toUpperCase()]).padStart(2, '0') + '-' + String(dm[1]).padStart(2, '0');
+  if (!date) {
+    var d2 = /\b(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{2}|\d{4})\s+\d{1,2}:\d{2}/.exec(text);
+    var mon = d2 && Object.keys(EN_MONTHS).filter(function (k) { return k.slice(0, 3) === d2[2].toUpperCase(); })[0];
+    if (mon) date = (d2[3].length === 2 ? '20' + d2[3] : d2[3]) + '-' + String(EN_MONTHS[mon]).padStart(2, '0') + '-' + String(d2[1]).padStart(2, '0');
+  }
+
+  // Thai template: "สถานที่เริ่มต้นการเดินทาง:" (the restaurant, for food) and "สถานที่ปลายทาง:"
+  var from = /สถานที่เริ่มต้นการเดินทาง\s*[:：]?\s*\n\s*([^\n]+)/.exec(text), to = /สถานที่ปลายทาง\s*[:：]?\s*\n\s*([^\n]+)/.exec(text);
+  var items = [];
+  var ir = /(?:^|\n)[ \t]*\d+\s*x\s+(.+?)\s+฿\s*[\d,.]+[ \t]*(?=\n|$)/g, im;
+  while ((im = ir.exec(text)) !== null) items.push(im[1].trim());
 
   // Ride: the trip section lists each stop followed by its time ("9:19PM").
   var merchant = '';
   var stops = [];
   for (var j = 1; j < lines.length; j++) if (/^\d{1,2}:\d{2}\s?(AM|PM)?$/i.test(lines[j]) && !/^[⋮•]+$/.test(lines[j - 1])) stops.push(lines[j - 1]);
   if (service === 'transport' && stops.length >= 2) merchant = stops[0] + ' → ' + stops[stops.length - 1];
+  if (!merchant && from && service === 'transport') merchant = from[1].trim() + (to ? ' → ' + to[1].trim() : '');
+  if (!merchant && from && service !== 'transport') merchant = from[1].trim();
   if (!merchant) {
     var om = /(?:Ordered from|Order from|สั่งจาก)\s*[:：]?\s*\n?\s*([^\n]{2,60})/i.exec(text);
     if (om) merchant = om[1].trim();
@@ -234,7 +252,7 @@ function parseGrabEmail(subject, body) {
   if (!service) why.push('ไม่รู้ว่าเป็น Food หรือ Transport');
   if (amount == null || !(amount > 0)) why.push('หายอดเงินไม่เจอ');
   return {ok: why.length === 0, service: service, product: product, category: category, amount: amount, last4: last4,
-          merchant: merchant, date: date, bookingId: bookingId, why: why.join(', ')};
+          merchant: merchant, date: date, bookingId: bookingId, items: items, why: why.join(', ')};
 }
 
 /** True for a real Grab receipt. Account, promo and verification emails from Grab are skipped quietly. */
@@ -655,15 +673,34 @@ function cashBalance_() {
 }
 
 // ───────────────────────── Grab e-receipts (time trigger, every 15 minutes) ─────────────────────────
+function grabTx_(p, date, ref, cards, now) {
+  var card = cards.filter(function (c) { return p.last4 && String(c.last4) === p.last4; })[0];
+  var note = (p.items && p.items.length ? p.items.join(', ') : 'Grab ' + (p.product || p.service)).slice(0, 120);
+  return {id: newId_(), date: date, amount: p.amount, type: 'expense', pay: card ? card.id : '', channel: 'Grab',
+    merchant: p.merchant, note: note, category: p.category, owner: 'me', settled: false, status: 'ok',
+    source: 'grab_email', tags: '', ref: ref, created_at: now, updated_at: now};
+}
+
 function fetchGrabEmails() {
   var s = settings_();
   var label = GmailApp.getUserLabelByName('km-done') || GmailApp.createLabel('km-done');
-  var threads = GmailApp.search(s.grab_query || DEFAULT_GRAB_QUERY, 0, 30);
-  if (!threads.length) return {added: 0, inbox: 0};
   var cards = readTable_('Cards'), txs = readTable_('Transactions'), now = nowIso_();
   var seen = {};
   txs.forEach(function (t) { if (t.ref) seen[t.ref] = true; });
   var adds = [], inbox = [];
+  // Receipts that could not be read before get another try with the current reader.
+  var retried = [];
+  readTable_('Inbox').forEach(function (r) {
+    if (r.status !== 'open' || r.source !== 'grab_email' || !isGrabReceipt(r.subject, r.raw)) return;
+    var p = parseGrabEmail(r.subject, r.raw);
+    if (!p.ok) return;
+    var ref = p.bookingId ? 'grab:' + p.bookingId : 'inbox:' + r.id;
+    if (!seen[ref]) { adds.push(grabTx_(p, p.date || String(r.received_at).slice(0, 10), ref, cards, now)); seen[ref] = true; }
+    retried.push({id: r.id, status: 'done', note: 'อ่านได้แล้ว'});
+  });
+  upsertRows_('Inbox', retried);
+  var threads = GmailApp.search(s.grab_query || DEFAULT_GRAB_QUERY, 0, 30);
+  if (!threads.length) { appendRows_('Transactions', adds); return {added: adds.length, inbox: 0}; }
   threads.forEach(function (th) {
     th.getMessages().forEach(function (msg) {
       var ref = 'gmail:' + msg.getId();
@@ -675,10 +712,7 @@ function fetchGrabEmails() {
       if (p.bookingId) { if (seen['grab:' + p.bookingId]) { seen[ref] = true; return; } ref = 'grab:' + p.bookingId; }
       var date = p.date || Utilities.formatDate(msg.getDate(), 'Asia/Bangkok', 'yyyy-MM-dd');
       if (p.ok) {
-        var card = cards.filter(function (c) { return p.last4 && String(c.last4) === p.last4; })[0];
-        adds.push({id: newId_(), date: date, amount: p.amount, type: 'expense', pay: card ? card.id : '', channel: 'Grab',
-          merchant: p.merchant, note: 'Grab ' + (p.product || p.service), category: p.category, owner: 'me', settled: false, status: 'ok',
-          source: 'grab_email', tags: '', ref: ref, created_at: now, updated_at: now});
+        adds.push(grabTx_(p, date, ref, cards, now));
       } else {
         inbox.push({id: newId_(), received_at: Utilities.formatDate(msg.getDate(), 'Asia/Bangkok', "yyyy-MM-dd'T'HH:mm:ss"), source: 'grab_email', subject: msg.getSubject(),
           raw: body.slice(0, 4000), status: 'open', note: p.why});
