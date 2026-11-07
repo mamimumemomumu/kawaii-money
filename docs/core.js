@@ -183,14 +183,14 @@ function parseGrabEmail(subject, body) {
 
   var amount = null, m;
   m = /(?:Total Paid|Amount Paid|ยอดชำระ(?:ทั้งหมด)?|ยอดที่ชำระ)\s*\n?\s*(?:฿|THB|บาท)?\s*([\d,]+(?:\.\d{1,2})?)/i.exec(text);
-  if (!m) m = /(?:^|\n)[ \t]*(?:TOTAL|Total|ยอดรวม|รวมทั้งสิ้น|รวม)[ \t]*\n?[ \t]*(?:฿|THB)\s*([\d,]+(?:\.\d{1,2})?)/.exec(text);
+  if (!m) m = /(?:^|\n)[ \t]*(?:TOTAL|Total|ยอดรวม|รวมทั้งสิ้น|รวม|ทั้งหมด)[ \t]*\n?[ \t]*(?:฿|THB)\s*([\d,]+(?:\.\d{1,2})?)/.exec(text);
   if (m) amount = Number(m[1].replace(/,/g, ''));
 
   var last4 = '';
-  m = /(?:Paid by|Payment method|ชำระโดย|ชำระด้วย|รูปแบบการชำระเงิน)\s*[:：]?\s*\n?[^\n\d]*?(\d{4})\b/i.exec(text) || /(?:•{2,}|\*{2,}|[xX]{4}|ending in|ลงท้ายด้วย)\s*(\d{4})\b/.exec(text);
+  m = /(?:Paid by|Payment method|ชำระโดย|ชำระด้วย|รูปแบบการชำระเงิน|วิธีการชำระเงิน)\s*[:：]?\s*\n?[^\n\d]*?(\d{4})\b/i.exec(text) || /(?:•{2,}|\*{2,}|[xX]{4}|ending in|ลงท้ายด้วย)\s*(\d{4})\b/.exec(text);
   if (m) last4 = m[1];
 
-  var bm = /(?:Booking ID|รหัสการจอง)\s*[:：]?\s*([A-Z0-9-]{6,})/i.exec(text);
+  var bm = /(?:Booking ID|Order ID|รหัสการจอง|รหัสคำสั่งซื้อ)\s*[:：]?\s*([A-Z0-9-]{6,})/i.exec(text);
   var bookingId = bm ? bm[1] : '';
 
   var date = '';
@@ -205,8 +205,12 @@ function parseGrabEmail(subject, body) {
   // Thai template: "สถานที่เริ่มต้นการเดินทาง:" (the restaurant, for food) and "สถานที่ปลายทาง:"
   var from = /สถานที่เริ่มต้นการเดินทาง\s*[:：]?\s*\n\s*([^\n]+)/.exec(text), to = /สถานที่ปลายทาง\s*[:：]?\s*\n\s*([^\n]+)/.exec(text);
   var items = [];
-  var ir = /(?:^|\n)[ \t]*\d+\s*x\s+(.+?)\s+฿\s*[\d,.]+[ \t]*(?=\n|$)/g, im;
-  while ((im = ir.exec(text)) !== null) items.push(im[1].trim());
+  // Items start with "1x"; long names wrap onto the next line, so keep just the first line of each name.
+  var ir = /(?:^|\n)[ \t]*\d+\s*x[ \t]+([^\n฿]+)/g, im;
+  while ((im = ir.exec(text)) !== null) {
+    var name = im[1].replace(/[\s\/]+$/, '').trim();
+    if (name && !/^Membership Card/i.test(name)) items.push(name);
+  }
 
   // Ride: the trip section lists each stop followed by its time ("9:19PM").
   var merchant = '';
@@ -216,7 +220,7 @@ function parseGrabEmail(subject, body) {
   if (!merchant && from && service === 'transport') merchant = from[1].trim() + (to ? ' → ' + to[1].trim() : '');
   if (!merchant && from && service !== 'transport') merchant = from[1].trim();
   if (!merchant) {
-    var om = /(?:Ordered from|Order from|สั่งจาก)\s*[:：]?\s*\n?\s*([^\n]{2,60})/i.exec(text);
+    var om = /(?:Ordered from|Order from|สั่งซื้อจาก|สั่งจาก)\s*[:：]?\s*\n?\s*([^\n]{2,60})/i.exec(text);
     if (om) merchant = om[1].trim();
   }
   if (!merchant) merchant = product ? 'Grab ' + product : 'Grab';

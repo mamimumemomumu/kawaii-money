@@ -78,4 +78,10 @@ eq('real Thai GrabFood receipt', [th.ok, th.service, th.product, th.category, th
 eq('food items', th.items, ['ขนมจีน', 'ตำคอหมูย่าง']);
 eq('ride still reads after the Thai changes', [ride.product, ride.amount, ride.date], ['Saver Bike', 39, '2026-11-04']);
 
+const mart = B.parseGrabEmail('Your Grab E-Receipt', fs.readFileSync(__dirname + '/fixtures/grab-mart-th.txt', 'utf8'));
+eq('real Thai GrabMart receipt', [mart.ok, mart.service, mart.product, mart.category, mart.amount, mart.last4, mart.date, mart.bookingId, mart.merchant],
+   [true, 'mart', 'GrabMart', 'groceries', 467, '1234', '2026-11-07', 'A-TESTMART0001', 'ซูเปอร์ทดสอบ - สาขาทดสอบ']);
+eq('mart items (first line of each name, no membership card)', mart.items.length, 4);
+eq('food items unchanged', th.items, ['ขนมจีน', 'ตำคอหมูย่าง']);
+
 if (fails) { console.log(fails + ' failed'); process.exit(1); } else console.log('backend tests passed');
